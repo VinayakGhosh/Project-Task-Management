@@ -10,7 +10,7 @@ logger = logging.getLogger("proj-task")
 app = FastAPI(
     title="Proj_Task",
     description="api for proj_task",
-    version="0.1.0",
+    version="0.1.2",
 )
 
 # Create all tables at startup
