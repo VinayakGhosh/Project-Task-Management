@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from db.db import Base, engine, get_db
 import logging
 from models.user import Users
+from models.plan import Plans
 from routes import api_router
 
 # Initialize logging
