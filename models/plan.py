@@ -1,6 +1,6 @@
 import uuid
 from db.db import Base
-from sqlalchemy import Column, TIMESTAMP, String, UUID, Integer, Boolean
+from sqlalchemy import Column, TIMESTAMP, String, UUID, Integer, Boolean, text
 
 class Plans(Base):
     __tablename__ = "plans"
