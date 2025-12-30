@@ -9,8 +9,8 @@ class Plans(Base):
 
     plan_id = Column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4)
     plan_tier = Column(String, nullable=False)
-    price = Column(Integer, nullable=False)
-    duration_days = Column(Integer, nullable=False)
+    price = Column(Integer, nullable=True)
+    duration_days = Column(Integer, nullable=True)
     max_projects = Column(Integer, nullable=False)
     task_per_day = Column(Integer, nullable=False)
     export_allowed = Column(Boolean, nullable=False)
