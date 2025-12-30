@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from db.db import Base, engine, get_db
 import logging
+from models.user import Users
+from routes import api_router
 
 # Initialize logging
 logger = logging.getLogger("proj-task")
@@ -17,3 +19,5 @@ Base.metadata.create_all(bind=engine)
 @app.get('/')
 def default():
     return{"msg": "Hello world"}
+
+app.include_router(api_router, prefix="/v1")
