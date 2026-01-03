@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from models.plan import Plans
-from lib.auth import get_current_user
+from lib.auth import get_current_user, get_admin_user
 from schema.plan import PlanResponse, PlanCreate
 from db.db import get_db
 from typing import List
@@ -15,7 +15,7 @@ router = APIRouter()
 def create_plans(
     plan: PlanCreate,
     db: Session=Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_admin_user)
 ): 
     new_plan = Plans(
         plan_tier=plan.plan_tier,
