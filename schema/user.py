@@ -2,6 +2,7 @@ from pydantic import BaseModel, EmailStr, Field
 from typing import Annotated
 from uuid import UUID
 from datetime import datetime
+import enum
 
 class UserRegister(BaseModel):
     first_name: Annotated[str, Field(..., min_length=1, example="John")]
@@ -22,3 +23,7 @@ class UserLoginResponse(BaseModel):
     expires_at: datetime
     user_id: UUID
     refresh_token_expires_at: datetime
+
+class UserRoleEnum(str, enum.Enum):
+    GENERAL="General"
+    ADMIN="Admin"

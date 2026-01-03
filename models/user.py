@@ -1,6 +1,7 @@
 import uuid
 from sqlalchemy import Column, Integer, String, UUID, Boolean, ForeignKey, TIMESTAMP, text, Date, UniqueConstraint
 from db.db import Base
+from schema.user import UserRoleEnum
 
 
 class Users(Base):
@@ -13,6 +14,7 @@ class Users(Base):
     last_name = Column(String, nullable=False)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
+    role = Column(String, nullable=False, server_default=UserRoleEnum.GENERAL.value, default=UserRoleEnum.GENERAL.value)
     created_at = Column(TIMESTAMP(timezone=True), server_default=text('now()'))
     updated_at = Column(TIMESTAMP(timezone=True), onupdate=text('now()'), server_default=text('now()'))
 
