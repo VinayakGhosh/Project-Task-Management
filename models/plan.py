@@ -14,8 +14,8 @@ class Plans(Base):
     max_projects = Column(Integer, nullable=False)
     task_per_day = Column(Integer, nullable=False)
     export_allowed = Column(Boolean, nullable=False)
-    CreatedAtTimeStamp = Column(TIMESTAMP(timezone=True), server_default=text('now()'))
-    UpdatedAtTimeStamp = Column(TIMESTAMP(timezone=True), onupdate=text('now()'), server_default=text('now()'))
+    created_at = Column(TIMESTAMP(timezone=True), server_default=text('now()'))
+    updated_at = Column(TIMESTAMP(timezone=True), onupdate=text('now()'), server_default=text('now()'))
 
 
 class Projects(Base):
@@ -24,8 +24,8 @@ class Projects(Base):
     user_id = Column(UUID, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False, index=True)
     name = Column(String, nullable=False)
     description = Column(String, nullable=True, default="No description")
-    CreatedAtTimeStamp = Column(TIMESTAMP(timezone=True), server_default=text('now()'))
-    UpdatedAtTimeStamp = Column(TIMESTAMP(timezone=True), onupdate=text('now()'), server_default=text('now()'))
+    created_at = Column(TIMESTAMP(timezone=True), server_default=text('now()'))
+    updated_at = Column(TIMESTAMP(timezone=True), onupdate=text('now()'), server_default=text('now()'))
 
 class Tasks(Base):
     __tablename__ = "tasks"
@@ -34,5 +34,5 @@ class Tasks(Base):
     name = Column(String, nullable=False)
     description = Column(String, nullable=True, default="No description") 
     status = Column(String, nullable=False, default=TaskStatusEnum.PENDING.value)
-    CreatedAtTimeStamp = Column(TIMESTAMP(timezone=True), server_default=text('now()'))
-    UpdatedAtTimeStamp = Column(TIMESTAMP(timezone=True), onupdate=text('now()'), server_default=text('now()'))
+    created_at = Column(TIMESTAMP(timezone=True), server_default=text('now()'))
+    updated_at = Column(TIMESTAMP(timezone=True), onupdate=text('now()'), server_default=text('now()'))

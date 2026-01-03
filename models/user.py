@@ -13,8 +13,8 @@ class Users(Base):
     last_name = Column(String, nullable=False)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
-    CreatedAtTimeStamp = Column(TIMESTAMP(timezone=True), server_default=text('now()'))
-    UpdatedAtTimeStamp = Column(TIMESTAMP(timezone=True), onupdate=text('now()'), server_default=text('now()'))
+    created_at = Column(TIMESTAMP(timezone=True), server_default=text('now()'))
+    updated_at = Column(TIMESTAMP(timezone=True), onupdate=text('now()'), server_default=text('now()'))
 
 
 class Subscriptions(Base):
@@ -25,8 +25,8 @@ class Subscriptions(Base):
     start_timestamp = Column(TIMESTAMP(timezone=True), nullable=False)
     end_timestamp = Column(TIMESTAMP(timezone=True), nullable=False)
     status = Column(String, nullable=False)
-    CreatedAtTimeStamp = Column(TIMESTAMP(timezone=True), server_default=text('now()'))
-    UpdatedAtTimeStamp = Column(TIMESTAMP(timezone=True), onupdate=text('now()'), server_default=text('now()'))
+    created_at = Column(TIMESTAMP(timezone=True), server_default=text('now()'))
+    updated_at = Column(TIMESTAMP(timezone=True), onupdate=text('now()'), server_default=text('now()'))
     
 
 class Usage(Base):
@@ -36,8 +36,8 @@ class Usage(Base):
     feature_name=Column(String, nullable=False)
     feature_count=Column(Integer, nullable=False)
     date=Column(Date, server_default=text("CURRENT_DATE"), nullable=False)
-    CreatedAtTimeStamp = Column(TIMESTAMP(timezone=True), server_default=text('now()'))
-    UpdatedAtTimeStamp = Column(TIMESTAMP(timezone=True), onupdate=text('now()'), server_default=text('now()'))
+    created_at = Column(TIMESTAMP(timezone=True), server_default=text('now()'))
+    updated_at = Column(TIMESTAMP(timezone=True), onupdate=text('now()'), server_default=text('now()'))
 
     __table_args__ = (
         UniqueConstraint("user_id", "feature_name", "date"),
