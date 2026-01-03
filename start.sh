@@ -2,8 +2,11 @@
 
 set -e
 
-echo "spinning up docker container to start database"
+echo "spinning up docker container to start database..."
 docker compose up -d
 
-echo "starting uvicorn"
+echo "Update Alembic Head..."
+alembic upgrade head
+
+echo "Starting FastApi server..."
 uvicorn main:app --reload

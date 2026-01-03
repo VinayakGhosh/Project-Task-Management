@@ -60,8 +60,6 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Create all tables at startup
-Base.metadata.create_all(bind=engine)
 
 @app.get('/')
 def default():
