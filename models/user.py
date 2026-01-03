@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, Integer, String, UUID, Boolean, ForeignKey, TIMESTAMP, text
+from sqlalchemy import Column, Integer, String, UUID, Boolean, ForeignKey, TIMESTAMP, text, Date, UniqueConstraint
 from db.db import Base
 
 
@@ -20,7 +20,7 @@ class Users(Base):
 class Subscriptions(Base):
     __tablename__ = "subscriptions"
     subscription_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID, ForeignKey("users.user_id"), nullable=False)
+    user_id = Column(UUID, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False,)
     plan_id = Column(UUID, ForeignKey("plans.plan_id"), nullable=False)
     start_timestamp = Column(TIMESTAMP(timezone=True), nullable=False)
     end_timestamp = Column(TIMESTAMP(timezone=True), nullable=False)
@@ -28,3 +28,17 @@ class Subscriptions(Base):
     CreatedAtTimeStamp = Column(TIMESTAMP(timezone=True), server_default=text('now()'))
     UpdatedAtTimeStamp = Column(TIMESTAMP(timezone=True), onupdate=text('now()'), server_default=text('now()'))
     
+
+class Usage(Base):
+    __tablename__="usage"
+    usage_id = Column(UUID(as_uuid=True),primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
+    feature_name=Column(String, nullable=False)
+    feature_count=Column(Integer, nullable=False)
+    date=Column(Date, server_default=text("CURRENT_DATE"), nullable=False)
+    CreatedAtTimeStamp = Column(TIMESTAMP(timezone=True), server_default=text('now()'))
+    UpdatedAtTimeStamp = Column(TIMESTAMP(timezone=True), onupdate=text('now()'), server_default=text('now()'))
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "feature_name", "date"),
+    )

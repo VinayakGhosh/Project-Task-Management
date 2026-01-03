@@ -23,6 +23,7 @@ logger = logging.getLogger("proj-task")
 async def lifespan(app:FastAPI):
     db: Session = next(get_db())
 
+    logging.info("Checking if plan exist")
     # Create default plans if not already present
     default_plans = os.getenv("DEFAULT_PLANS", "Free, Pro").split(",")
     existing_plans = db.query(Plans.plan_tier).all()
