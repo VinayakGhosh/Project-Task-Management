@@ -2,7 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, Form, Query
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from schema.user import UserRegister, UserResponse, UserLoginResponse
-from models.user import Users
+from schema.subscription import SubscriptionStatusEnum
+from models.user import Users, Subscriptions
+from models.plan import Plans
 from lib.auth import jwt, JWTError, create_access_token, get_current_user
 from db.db import get_db
 from sqlalchemy.exc import IntegrityError
@@ -22,6 +24,8 @@ REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS"))
 @router.post("/signup", response_model=UserResponse)
 def register_user(user: UserRegister, db: Session = Depends(get_db)):
     try:
+
+        # 1 add user to user table
         db_user = Users(
             first_name=user.first_name,
             last_name=user.last_name,
@@ -29,6 +33,29 @@ def register_user(user: UserRegister, db: Session = Depends(get_db)):
             hashed_password=str(pwd_context.hash(user.password))
         )
         db.add(db_user)
+        db.flush()  #to ensure user id is available to us
+
+        # 2 fetch the free plan details to assing to the user
+        free_plan = db.query(Plans).filter(Plans.price==0, Plans.is_deleted==False, Plans.is_discontinued==False).first()
+        if not free_plan:
+            raise HTTPException(status_code=500, detail="Free plan doesn't exist")
+
+        # 3 Create the subscription for the user
+        start_time = datetime.utcnow()
+        if free_plan.duration_days:
+            end_time = start_time + timedelta(days=free_plan.duration_days)
+        else:
+            end_time = datetime.max
+
+        subscription = Subscriptions(
+            user_id = db_user.user_id,
+            plan_id = free_plan.plan_id,
+            start_timestamp = start_time,
+            end_timestamp = end_time,
+            status = SubscriptionStatusEnum.ACTIVE.value
+        )
+        db.add(subscription)
+        # 4 Commit everything
         db.commit()
         db.refresh(db_user)
 
