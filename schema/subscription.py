@@ -4,10 +4,13 @@ from uuid import UUID
 from datetime import datetime
 import enum
 
+
 class SubscriptionStatusEnum(str, enum.Enum):
-    ACTIVE = 'Active'
-    CANCELLED = 'Cancelled'
-    EXPIRED = 'Expired'
+    ACTIVE = "Active"
+    CANCELLED = "Cancelled"
+    EXPIRED = "Expired"
+    ENDED = "Ended"
+
 
 class SubscriptionCreate(BaseModel):
     user_id: UUID
@@ -15,6 +18,7 @@ class SubscriptionCreate(BaseModel):
     start_timestamp: datetime
     end_timestamp: Optional[datetime]
     status: SubscriptionStatusEnum
+
 
 class SubscriptionResponse(BaseModel):
     subscription_id: UUID

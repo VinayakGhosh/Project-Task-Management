@@ -82,7 +82,7 @@ def user_login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db)
 ):
-     # OAuth2 uses "username" field
+    # OAuth2 uses "username" field
     email = form_data.username
     password = form_data.password
     user = db.query(Users).filter(Users.email == email).first()

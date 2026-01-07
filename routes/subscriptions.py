@@ -1,23 +1,88 @@
-from fastapi import HTTPException, Depends, APIRouter, Query
+from fastapi import HTTPException, Depends, APIRouter, Query, Path
 from sqlalchemy.orm import Session
 from models.user import Subscriptions, Users
+from models.plan import Plans
 from schema.subscription import SubscriptionResponse, SubscriptionCreate, SubscriptionStatusEnum
 from db.db import get_db
 from lib.auth import get_current_user, get_admin_user
 from typing import List, Optional
 from pydantic import UUID4
+from datetime import datetime, timedelta
+from sqlalchemy.exc import IntegrityError
 
 router=APIRouter()
 
-# @router.post("/", response_model=SubscriptionResponse)
-# def create_subscription(
-#     Subs: SubscriptionCreate,
-#     db: Session = Depends(get_db),
-#     current_user: dict = Depends(get_current_user)
-# ):
+@router.post("/{plan_id}", response_model=SubscriptionResponse)
+def create_subscription(
+    plan_id: UUID4 = Path(..., description="Plan ID create subscription for"),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    try:
+        todayTimeStamp = datetime.utcnow()
+        # 1) fetch new plan to create subscription
+        new_plan = db.query(Plans).filter(Plans.plan_id == plan_id, Plans.is_deleted == False, Plans.is_discontinued == False).first()
+        if not new_plan:
+            raise HTTPException(status_code=404, detail=f"No plan found with plan_id: {plan_id}")
+        
+        # 2) Fetch user's current subscription and plan along with it
+        result = db.query(Subscriptions, Plans).join(Plans, Subscriptions.plan_id == Plans.plan_id).filter(Subscriptions.user_id==current_user.user_id, Subscriptions.status==SubscriptionStatusEnum.ACTIVE.value).first()
+        
+        if result: 
+            user_current_subscription,current_plan = result
+
+            # 3) Raise error if plan price < user's current plan price
+            if new_plan.price < current_plan.price:
+                raise HTTPException(status_code=409, detail="Subscription can't be downgraded until expired.")
+            
+            # 4) Raise error if same plan is being purchased before expiry.
+            if new_plan.plan_id == user_current_subscription.plan_id:
+                raise HTTPException(status_code=409, detail="can't purchase same plan before expiry")
+
+            # 5) Mark the previous subscription status as ended and update the end_timestamp
+            user_current_subscription.status = SubscriptionStatusEnum.ENDED.value
+            user_current_subscription.end_timestamp = todayTimeStamp
+
+        # 6) Create the new subscription for the user
+        start_time = todayTimeStamp
+
+        # If new_plan doesn't have duration days then throw error
+        if not new_plan.duration_days:
+            raise HTTPException(status_code=400, detail="Plan duration is not defined")
+        
+        new_subscription = Subscriptions(
+            user_id = current_user.user_id,
+            plan_id = plan_id,
+            start_timestamp=start_time,
+            end_timestamp = start_time + timedelta(days=new_plan.duration_days),
+            status = SubscriptionStatusEnum.ACTIVE.value,
+        )
+
+        db.add(new_subscription)
+        db.commit()
+        db.refresh(new_subscription)
+        
+        
+        return new_subscription
     
-#     new_subscription =0
-#     return new_subscription
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=400,
+            detail="Database constraint violation while creating subscription"
+        )
+
+    except HTTPException:
+        db.rollback()
+        raise
+
+    except Exception:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail="Unexpected error while creating subscription"
+        )
+
     
 
 @router.get(
