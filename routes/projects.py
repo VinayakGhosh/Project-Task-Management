@@ -7,7 +7,8 @@ from models.user import Usage, Subscriptions
 from schema.project import ProjectResponse, CreateProject
 from schema.usage import FeatureNameEnum
 from schema.subscription import SubscriptionStatusEnum
-from datetime import datetime, date, time
+from datetime import date
+from lib.subscription import require_active_subscription
 
 
 
@@ -18,24 +19,15 @@ def create_project(
     payload: CreateProject,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
+    subscription = Depends(require_active_subscription)
 ):
     today = date.today()
 
     # 1️⃣ Check active subscription
-    result = (
-        db.query(Plans, Subscriptions)
-        .join(Plans, Subscriptions.plan_id == Plans.plan_id)
-        .filter(
-            Subscriptions.user_id == current_user.user_id,
-            Subscriptions.status == SubscriptionStatusEnum.ACTIVE.value,
-        )
-        .first()
-    )
+    user_plan = db.query(Plans).filter(subscription.plan_id==Plans.plan_id).first()
 
-    if not result:
-        raise HTTPException(403, "Active subscription required")
-
-    user_plan, user_subscription = result
+    if not user_plan:
+        raise HTTPException(404, "no plan exist for this subscription")
 
     # 2️⃣ Check today's usage (USER-SPECIFIC)
     usage_today = (

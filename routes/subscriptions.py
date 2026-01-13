@@ -7,7 +7,7 @@ from db.db import get_db
 from lib.auth import get_current_user, get_admin_user
 from typing import List, Optional
 from pydantic import UUID4
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy.exc import IntegrityError
 
 router=APIRouter()
@@ -19,7 +19,7 @@ def create_subscription(
     current_user: dict = Depends(get_current_user)
 ):
     try:
-        todayTimeStamp = datetime.utcnow()
+        todayTimeStamp = datetime.now(timezone.utc)
         # 1) fetch new plan to create subscription
         new_plan = db.query(Plans).filter(Plans.plan_id == plan_id, Plans.is_deleted == False, Plans.is_discontinued == False).first()
         if not new_plan:
