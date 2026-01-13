@@ -9,7 +9,7 @@ class SubscriptionStatusEnum(str, enum.Enum):
     ACTIVE = "Active"
     CANCELLED = "Cancelled"
     EXPIRED = "Expired"
-    ENDED = "Ended"
+    ENDED = "Ended"  # when new plan subscription added above and existing one
 
 
 class SubscriptionCreate(BaseModel):
