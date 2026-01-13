@@ -6,6 +6,7 @@ from models.plan import Projects, Plans
 from schema.project import ProjectResponse, CreateProject, PatchProject
 from pydantic import UUID4
 from lib.subscription import require_active_subscription
+from typing import List, Optional
 
 
 router = APIRouter()
@@ -77,3 +78,21 @@ def update_project_details(
     db.commit()
     db.refresh(user_project)
     return user_project
+
+
+@router.get("/", response_model=List[ProjectResponse])
+def get_project(
+    project_id: Optional[UUID4] = None,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    query = db.query(Projects).filter(Projects.user_id==current_user.user_id)
+    if project_id is not None:
+        query = query.filter(Projects.project_id == project_id)
+
+    user_project = query.all()
+    if not user_project:
+        raise HTTPException(status_code=404, detail="No projects found for the user")
+
+    return user_project
+    
