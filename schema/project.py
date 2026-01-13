@@ -15,3 +15,6 @@ class ProjectResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+class PatchProject(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
