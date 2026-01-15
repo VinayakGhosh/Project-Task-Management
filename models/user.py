@@ -36,7 +36,7 @@ class Usage(Base):
     usage_id = Column(UUID(as_uuid=True),primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
     feature_name=Column(String, nullable=False)
-    feature_count=Column(Integer, nullable=False)
+    feature_count=Column(Integer, nullable=False, default=1)
     date=Column(Date, server_default=text("CURRENT_DATE"), nullable=False)
     created_at = Column(TIMESTAMP(timezone=True), server_default=text('now()'))
     updated_at = Column(TIMESTAMP(timezone=True), onupdate=text('now()'), server_default=text('now()'))
