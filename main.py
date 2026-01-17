@@ -57,7 +57,7 @@ async def lifespan(app:FastAPI):
 app = FastAPI(
     title="Proj_Task",
     description="api for proj_task",
-    version="0.2.15",
+    version="0.2.16",
     lifespan=lifespan
 )
 
