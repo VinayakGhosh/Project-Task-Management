@@ -103,3 +103,33 @@ def user_login(
         "user_id": str(user.user_id),
         "refresh_token_expires_at": refresh_token_expires_at
     }
+
+
+@router.get("/me")
+def get_current_user_profile(
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    result = (
+        db.query(Plans, Subscriptions)
+        .join(Plans, Subscriptions.plan_id == Plans.plan_id)
+        .filter(
+            Subscriptions.user_id == current_user.user_id,
+            Subscriptions.status == SubscriptionStatusEnum.ACTIVE.value
+        )
+        .first()
+    )
+    if not result:
+        raise HTTPException(status_code=403, detail="not found subscription or plan")
+    
+    user_plan, user_subscription = result
+
+
+    return {
+        "user_id": current_user.user_id,
+        "email": current_user.email,
+        "plan_id": user_plan.plan_id, 
+        "plan_name": user_plan.plan_tier,
+        "subscription_status": user_subscription.status,
+        "subscription_expiry": user_subscription.end_timestamp
+    }

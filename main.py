@@ -5,6 +5,7 @@ from models.user import Users
 from models.plan import Plans
 from routes import api_router
 from contextlib import asynccontextmanager
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from dotenv import load_dotenv
 import os
@@ -60,6 +61,16 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:8080",  # frontend
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get('/')
 def default():
