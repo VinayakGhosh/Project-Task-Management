@@ -2,7 +2,12 @@ from fastapi import HTTPException, Depends, APIRouter, Query, Path
 from sqlalchemy.orm import Session
 from models.user import Subscriptions, Users
 from models.plan import Plans
-from schema.subscription import SubscriptionResponse, SubscriptionCreate, SubscriptionStatusEnum
+from schema.subscription import (
+    SubscriptionResponse,
+    SubscriptionCreate,
+    SubscriptionStatusEnum,
+    CurrentSubscriptionResponse,
+)
 from db.db import get_db
 from lib.auth import get_current_user, get_admin_user
 from typing import List, Optional
@@ -11,6 +16,16 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy.exc import IntegrityError
 
 router=APIRouter()
+
+def build_plan_features(plan: Plans) -> List[str]:
+    project_limit = "Unlimited projects" if plan.max_projects < 0 else f"Up to {plan.max_projects} projects"
+    task_limit = "Unlimited tasks per day" if plan.task_per_day < 0 else f"{plan.task_per_day} tasks per day"
+    features = [
+        project_limit,
+        task_limit,
+        "Advanced exports" if plan.export_allowed else "Basic exports only",
+    ]
+    return features
 
 @router.post("/{plan_id}", response_model=SubscriptionResponse)
 def create_subscription(
@@ -121,3 +136,40 @@ def get_subscriptions(
         raise HTTPException(status_code=404, detail="No subscriptions found")
 
     return subscriptions
+
+
+@router.get("/current", response_model=CurrentSubscriptionResponse)
+def get_current_subscription(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    now = datetime.now(timezone.utc)
+    result = (
+        db.query(Subscriptions, Plans)
+        .join(Plans, Subscriptions.plan_id == Plans.plan_id)
+        .filter(
+            Subscriptions.user_id == current_user.user_id,
+            Subscriptions.status == SubscriptionStatusEnum.ACTIVE.value,
+            Subscriptions.end_timestamp > now,
+        )
+        .order_by(Subscriptions.end_timestamp.desc())
+        .first()
+    )
+
+    if not result:
+        raise HTTPException(status_code=404, detail="No active subscription found")
+
+    subscription, plan = result
+
+    return CurrentSubscriptionResponse(
+        id=subscription.subscription_id,
+        plan_id=plan.plan_id,
+        plan_name=plan.plan_tier,
+        status=SubscriptionStatusEnum(subscription.status),
+        current_period_start=subscription.start_timestamp,
+        current_period_end=subscription.end_timestamp,
+        max_projects=plan.max_projects,
+        task_per_day=plan.task_per_day,
+        export_allowed=plan.export_allowed,
+        features=build_plan_features(plan),
+    )
