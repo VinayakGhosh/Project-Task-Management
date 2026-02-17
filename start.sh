@@ -2,6 +2,8 @@
 
 set -e
 
+source .venv/Scripts/activate
+
 echo "spinning up docker container to start database..."
 docker compose up -d
 

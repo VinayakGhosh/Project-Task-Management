@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from dotenv import load_dotenv
 import os
+from scheduler import scheduler
 
 load_dotenv()
 
@@ -47,12 +48,19 @@ async def lifespan(app:FastAPI):
     
     if plan_created:
         db.commit()
-        logging.info("Default plans created")
+        logger.info("Default plans created")
     else:
-        logging.info("Default plans already exist")
+        logger.info("Default plans already exist")
+    db.close()
 
+    logger.info("Starting scheduler")
+    scheduler.start()
 
     yield
+
+    logging.info("Stopping scheduler")
+    scheduler.shutdown()
+    
 
 app = FastAPI(
     title="Proj_Task",
@@ -60,7 +68,6 @@ app = FastAPI(
     version="0.2.16",
     lifespan=lifespan
 )
-
 
 app.add_middleware(
     CORSMiddleware,

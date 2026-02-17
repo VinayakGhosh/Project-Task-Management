@@ -160,6 +160,11 @@ def get_current_subscription(
         raise HTTPException(status_code=404, detail="No active subscription found")
 
     subscription, plan = result
+    days_left =None
+    if plan.plan_tier == "Free":
+        days_left = "None"
+    else:
+        days_left = (subscription.end_timestamp - datetime.now(timezone.utc)).days
 
     return CurrentSubscriptionResponse(
         id=subscription.subscription_id,
@@ -172,4 +177,5 @@ def get_current_subscription(
         task_per_day=plan.task_per_day,
         export_allowed=plan.export_allowed,
         features=build_plan_features(plan),
+        days_left=days_left,
     )

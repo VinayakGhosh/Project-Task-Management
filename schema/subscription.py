@@ -45,4 +45,5 @@ class CurrentSubscriptionResponse(BaseModel):
     task_per_day: int
     export_allowed: bool
     features: List[str]
+    days_left: Optional[str] = None
 
