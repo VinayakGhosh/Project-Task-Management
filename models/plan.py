@@ -23,7 +23,8 @@ class Plans(Base):
 class Projects(Base):
     __tablename__ = "projects"
     project_id = Column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4)
-    user_id = Column(UUID, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False, index=True)
+    owner_user_id = Column(UUID, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=True)
+    organization_id = Column(UUID, ForeignKey("organizations.organization_id", ondelete="CASCADE"), nullable=True)
     name = Column(String, nullable=False)
     description = Column(String, nullable=True, default="No description")
     created_at = Column(TIMESTAMP(timezone=True), server_default=text('now()'))
@@ -33,7 +34,6 @@ class Tasks(Base):
     __tablename__ = "tasks"
     task_id = Column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4)
     project_id = Column(UUID, ForeignKey("projects.project_id", ondelete="CASCADE"), nullable=False)
-    user_id = Column(UUID, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False, index=True)
     name = Column(String, nullable=False)
     description = Column(String, nullable=True, default="No description") 
     status = Column(String, nullable=False, default=TaskStatusEnum.PENDING.value)

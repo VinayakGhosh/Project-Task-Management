@@ -16,6 +16,7 @@ from db.db import Base
 # IMPORTANT: import all models so Base.metadata is populated
 from models.user import Users, Subscriptions, Usage
 from models.plan import Plans, Projects, Tasks
+from models.organization import Organization, OrganizationMember, OrganizationInvitation
 
 
 # this is the Alembic Config object, which provides

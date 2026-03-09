@@ -7,6 +7,7 @@ from schema.subscription import (
     SubscriptionCreate,
     SubscriptionStatusEnum,
     CurrentSubscriptionResponse,
+    PlanFeatures
 )
 from db.db import get_db
 from lib.auth import get_current_user, get_admin_user
@@ -17,15 +18,13 @@ from sqlalchemy.exc import IntegrityError
 
 router=APIRouter()
 
-def build_plan_features(plan: Plans) -> List[str]:
-    project_limit = "Unlimited projects" if plan.max_projects < 0 else f"Up to {plan.max_projects} projects"
-    task_limit = "Unlimited tasks per day" if plan.task_per_day < 0 else f"{plan.task_per_day} tasks per day"
-    features = [
-        project_limit,
-        task_limit,
-        "Advanced exports" if plan.export_allowed else "Basic exports only",
-    ]
-    return features
+# def build_plan_features(plan: Plans) -> Dict[str, int | bool]:
+#     return {
+#         "project": plan.max_projects,
+#         "task": plan.task_per_day,
+#         "export_allowed": plan.export_allowed,
+#     }
+
 
 @router.post("/{plan_id}", response_model=SubscriptionResponse)
 def create_subscription(
@@ -162,7 +161,7 @@ def get_current_subscription(
     subscription, plan = result
     days_left =None
     if plan.plan_tier == "Free":
-        days_left = "None"
+        days_left = None
     else:
         days_left = (subscription.end_timestamp - datetime.now(timezone.utc)).days
 
@@ -176,6 +175,10 @@ def get_current_subscription(
         max_projects=plan.max_projects,
         task_per_day=plan.task_per_day,
         export_allowed=plan.export_allowed,
-        features=build_plan_features(plan),
+        features=PlanFeatures(
+            project=plan.max_projects,
+            task=plan.task_per_day,
+            export_allowed=plan.export_allowed,
+        ),
         days_left=days_left,
     )

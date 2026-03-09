@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, Dict
 from uuid import UUID
 from datetime import datetime
 import enum
@@ -33,6 +33,11 @@ class SubscriptionResponse(BaseModel):
     class Config:
         from_attributes = True  # IMPORTANT for SQLAlchemy ORM
 
+class PlanFeatures(BaseModel):
+    project: int
+    task: int
+    export_allowed: bool
+
 
 class CurrentSubscriptionResponse(BaseModel):
     id: UUID
@@ -44,6 +49,6 @@ class CurrentSubscriptionResponse(BaseModel):
     max_projects: int
     task_per_day: int
     export_allowed: bool
-    features: List[str]
+    features: PlanFeatures
     days_left: Optional[str] = None
 

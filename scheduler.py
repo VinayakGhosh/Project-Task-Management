@@ -54,7 +54,7 @@ def check_expired_subscriptions():
 scheduler.add_job(
     check_expired_subscriptions,
     "interval",
-    minutes=1,   # ← Good default
+    days=1,   
     id="subscription_expiry_job",
     replace_existing=True,
 )
