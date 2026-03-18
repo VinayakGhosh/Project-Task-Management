@@ -5,7 +5,7 @@ from models.user import Usage
 from lib.subscription import require_active_subscription
 from lib.auth import get_current_user
 from schema.task import TaskCreateSchema, TaskResponseSchema, PatchTask, TaskStatusEnum
-from schema.usage import FeatureNameEnum
+from schema.stats import FeatureNameEnum
 from db.db import get_db
 from datetime import datetime, timezone
 from typing import Optional, List
@@ -120,7 +120,8 @@ def get_tasks(
     status: Optional[TaskStatusEnum] = Query(None),
 ):
     query = db.query(Tasks).filter(
-        Tasks.user_id == current_user.user_id
+        Tasks.user_id == current_user.user_id,
+        Tasks.isDelete == False
     )
 
     # Optional filters
@@ -135,3 +136,23 @@ def get_tasks(
 
     tasks = query.order_by(Tasks.created_at.desc()).all()
     return tasks
+
+
+@router.delete("/{task_id}", status_code=204)
+def delete_task(
+    task_id: str,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
+):
+    task = db.query(Tasks).filter(
+        Tasks.task_id == task_id,
+        Tasks.user_id == current_user.user_id,
+        Tasks.isDelete == False
+    ).first()
+
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    task.isDelete = True
+    db.commit()
+    return

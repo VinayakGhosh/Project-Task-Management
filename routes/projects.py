@@ -173,7 +173,8 @@ def get_project(
 ):
     query = db.query(Projects).filter(
         Projects.owner_user_id == current_user.user_id,
-        Projects.organization_id == None
+        Projects.organization_id == None,
+        Projects.isDelete == False
     )
     if project_id is not None:
         query = query.filter(Projects.project_id == project_id)
@@ -208,7 +209,10 @@ def get_project_organization(
     if current_user.user_id != organization.owner_user_id and not organization_members:
         raise HTTPException(status_code=403, detail="Not a member of this organization")
 
-    query = db.query(Projects).filter(Projects.organization_id == organization_id)
+    query = db.query(Projects).filter(
+        Projects.organization_id == organization_id,
+        Projects.isDelete == False
+    )
 
     if project_id is not None:
         query = query.filter(Projects.project_id == project_id)
@@ -218,4 +222,35 @@ def get_project_organization(
         raise HTTPException(status_code=404, detail="No projects found for the organization")
 
     return org_projects
-    
+
+
+@router.delete("/{project_id}", status_code=204)
+def delete_project(
+    project_id: UUID4 = Path(..., description="project_id of the project"),
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    user_project = db.query(Projects).filter(
+        Projects.project_id == project_id,
+        Projects.isDelete == False
+    ).first()
+
+    if not user_project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    if user_project.organization_id:
+        organization = db.query(Organization).filter(
+            Organization.organization_id == user_project.organization_id
+        ).first()
+
+        if not organization:
+            raise HTTPException(status_code=404, detail="Organization not found")
+
+        ensure_org_owner_or_admin(db, organization, current_user.user_id)
+    else:
+        if user_project.owner_user_id != current_user.user_id:
+            raise HTTPException(status_code=403, detail="Not authorized to delete this project")
+
+    user_project.isDelete = True
+    db.commit()
+    return

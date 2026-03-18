@@ -27,6 +27,7 @@ class Projects(Base):
     organization_id = Column(UUID, ForeignKey("organizations.organization_id", ondelete="CASCADE"), nullable=True)
     name = Column(String, nullable=False)
     description = Column(String, nullable=True, default="No description")
+    isDelete = Column(Boolean, nullable=False, server_default=text("false"), default=False)
     created_at = Column(TIMESTAMP(timezone=True), server_default=text('now()'))
     updated_at = Column(TIMESTAMP(timezone=True), onupdate=text('now()'), server_default=text('now()'))
 
@@ -37,5 +38,6 @@ class Tasks(Base):
     name = Column(String, nullable=False)
     description = Column(String, nullable=True, default="No description") 
     status = Column(String, nullable=False, default=TaskStatusEnum.PENDING.value)
+    isDelete = Column(Boolean, nullable=False, server_default=text("false"), default=False)
     created_at = Column(TIMESTAMP(timezone=True), server_default=text('now()'))
     updated_at = Column(TIMESTAMP(timezone=True), onupdate=text('now()'), server_default=text('now()'))

@@ -9,9 +9,7 @@ from models.user import Usage
 router = APIRouter()
 
 @router.get("/usage")
-def get_usage(
-    feature_name: Optional[str] = Query(None),
-    usage_date: Optional[date] = Query(None),
+def get_overall_stats(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
@@ -19,11 +17,11 @@ def get_usage(
         Usage.user_id == current_user.user_id
     )
 
-    if feature_name:
-        query = query.filter(Usage.feature_name == feature_name)
+    # if feature_name:
+    #     query = query.filter(Usage.feature_name == feature_name)
 
-    if usage_date:
-        query = query.filter(Usage.date == usage_date)
+    # if usage_date:
+    #     query = query.filter(Usage.date == usage_date)
     
     usage = query.all()
 
