@@ -10,4 +10,6 @@ class StatsResponse(BaseModel):
     tasks_completed_count: int
     tasks_pending_count: int
     tasks_in_progress_count: int
+    task_limit: int
+    project_limit: int
    
