@@ -2,12 +2,14 @@ from fastapi import HTTPException, Depends, APIRouter, Path, Query
 from sqlalchemy.orm import Session
 from db.db import get_db
 from lib.auth import get_current_user
-from models.plan import Projects, Plans
+from models.plan import Projects, Plans, Tasks
 from models.organization import Organization, OrganizationMember
 from schema.project import ProjectResponse, CreateProject, PatchProject
+from schema.task import TaskStatusEnum
 from pydantic import UUID4
 from lib.subscription import require_active_subscription
 from typing import List, Optional
+from sqlalchemy import func
 
 
 router = APIRouter()
@@ -33,47 +35,59 @@ def ensure_org_owner_or_admin(db: Session, organization: Organization, user_id: 
         )
 
 
-@router.post("/", response_model=ProjectResponse)
-def create_project(
-    payload: CreateProject,
+@router.get("/", response_model=List[ProjectResponse])
+def get_project(
+    project_id: Optional[UUID4] = None,
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-    subscription=Depends(require_active_subscription),
+    current_user = Depends(get_current_user)
 ):
-
-    # Check active subscription
-    user_plan = db.query(Plans).filter(Plans.plan_id == subscription.plan_id).first()
-
-    if not user_plan:
-        raise HTTPException(
-            status_code=404, detail="no plan exist for this subscription"
+    query = (
+        db.query(
+            Projects,
+            func.count(Tasks.task_id).label("total_tasks"),
+            func.count(Tasks.task_id)
+                .filter(Tasks.status == TaskStatusEnum.DONE.value)
+                .label("completed_tasks")
         )
-
-    total_projects = (
-        db.query(Projects).filter(
+        .outerjoin(
+            Tasks,
+            (Tasks.project_id == Projects.project_id) &
+            (Tasks.isDelete == False)
+        )
+        .filter(
             Projects.owner_user_id == current_user.user_id,
-            Projects.organization_id.is_(None)
-        ).count()
+            Projects.organization_id == None,
+            Projects.isDelete == False
+        )
+        .group_by(Projects.project_id)
     )
 
-    # check total projects < max project allowed in plan
-    if total_projects >= user_plan.max_projects:
-        raise HTTPException(
-            status_code=403, detail="Project limit reached for your current plan"
+    if project_id is not None:
+        query = query.filter(Projects.project_id == project_id)
+
+    results = query.all()
+
+    if not results:
+        raise HTTPException(status_code=404, detail="No projects found for the user")
+
+    # 🔥 Map response properly
+    response = []
+    for project, total_tasks, completed_tasks in results:
+        response.append(
+            ProjectResponse(
+                project_id=project.project_id,
+                owner_user_id=project.owner_user_id,
+                organization_id=project.organization_id,
+                name=project.name,
+                description=project.description,
+                created_at=project.created_at,
+                updated_at=project.updated_at,
+                total_tasks=total_tasks,
+                completed_tasks=completed_tasks
+            )
         )
 
-    new_project = Projects(
-        owner_user_id=current_user.user_id,
-        organization_id=None,
-        name=payload.name,
-        description=payload.description,
-    )
-    db.add(new_project)
-
-    db.commit()
-    db.refresh(new_project)
-
-    return new_project
+    return response
 
 
 @router.post("/organization", response_model=ProjectResponse)
@@ -165,27 +179,6 @@ def update_project_details(
     return user_project
 
 
-@router.get("/", response_model=List[ProjectResponse])
-def get_project(
-    project_id: Optional[UUID4] = None,
-    db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
-):
-    query = db.query(Projects).filter(
-        Projects.owner_user_id == current_user.user_id,
-        Projects.organization_id == None,
-        Projects.isDelete == False
-    )
-    if project_id is not None:
-        query = query.filter(Projects.project_id == project_id)
-
-    user_project = query.all()
-    if not user_project:
-        raise HTTPException(status_code=404, detail="No projects found for the user")
-
-    return user_project
-
-
 @router.get("/organization", response_model=List[ProjectResponse])
 def get_project_organization(
     organization_id: UUID4 = Query(..., description="Organization ID to fetch projects for"),
@@ -202,26 +195,58 @@ def get_project_organization(
     if not organization:
         raise HTTPException(status_code=404, detail="Organization not found")
 
-    organization_members = db.query(OrganizationMembers).filter(
-        OrganizationMembers.organization_id == organization_id,
-        OrganizationMembers.user_id == current_user.user_id
+    organization_member = db.query(OrganizationMember).filter(
+        OrganizationMember.organization_id == organization_id,
+        OrganizationMember.user_id == current_user.user_id
     ).first()
-    if current_user.user_id != organization.owner_user_id and not organization_members:
+    if current_user.user_id != organization.owner_user_id and not organization_member:
         raise HTTPException(status_code=403, detail="Not a member of this organization")
 
-    query = db.query(Projects).filter(
-        Projects.organization_id == organization_id,
-        Projects.isDelete == False
+    query = (
+        db.query(
+            Projects,
+            func.count(Tasks.task_id).label("total_tasks"),
+            func.count(Tasks.task_id)
+                .filter(Tasks.status == TaskStatusEnum.DONE.value)
+                .label("completed_tasks")
+        )
+        .outerjoin(
+            Tasks,
+            (Tasks.project_id == Projects.project_id) &
+            (Tasks.isDelete == False)
+        )
+        .filter(
+            Projects.organization_id == organization_id,
+            Projects.isDelete == False
+        )
+        .group_by(Projects.project_id)
     )
 
     if project_id is not None:
         query = query.filter(Projects.project_id == project_id)
 
-    org_projects = query.all()
-    if not org_projects:
+    results = query.all()
+
+    if not results:
         raise HTTPException(status_code=404, detail="No projects found for the organization")
 
-    return org_projects
+    response = []
+    for project, total_tasks, completed_tasks in results:
+        response.append(
+            ProjectResponse(
+                project_id=project.project_id,
+                owner_user_id=project.owner_user_id,
+                organization_id=project.organization_id,
+                name=project.name,
+                description=project.description,
+                created_at=project.created_at,
+                updated_at=project.updated_at,
+                total_tasks=total_tasks,
+                completed_tasks=completed_tasks
+            )
+        )
+
+    return response
 
 
 @router.delete("/{project_id}", status_code=204)

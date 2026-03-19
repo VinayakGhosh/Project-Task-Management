@@ -15,6 +15,11 @@ class ProjectResponse(BaseModel):
     description: str
     created_at: datetime
     updated_at: datetime
+    total_tasks: int
+    completed_tasks: int
+
+    class Config:
+        from_attributes = True
 
 class PatchProject(BaseModel):
     name: Optional[str] = None
