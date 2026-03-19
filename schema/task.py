@@ -22,6 +22,10 @@ class TaskResponseSchema(BaseModel):
     status: str
     created_at: str 
     updated_at: str
+    total_tasks: int
+    completed_tasks: int
+    class Config:
+        from_attributes = True
 
 class PatchTask(BaseModel):
     name: Optional[str] = None

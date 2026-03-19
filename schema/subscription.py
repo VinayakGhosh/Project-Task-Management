@@ -50,5 +50,5 @@ class CurrentSubscriptionResponse(BaseModel):
     task_per_day: int
     export_allowed: bool
     features: PlanFeatures
-    days_left: Optional[str] = None
+    days_left: Optional[int] = None
 
