@@ -10,8 +10,7 @@ services:
       - "5432:5432"
     volumes:
       - proj-task-data:/var/lib/postgresql/data
-    # networks:
-    #   - netgala-network
+
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
