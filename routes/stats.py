@@ -1,5 +1,6 @@
-from models.plan import Projects, Tasks, Plans
-from datetime import date
+from models.plan import Plans
+from models.Project import Projects, ProjectStatus
+from models.Task import Tasks
 from typing import Optional
 from fastapi import HTTPException, Depends, Query, APIRouter
 from sqlalchemy.orm import Session
@@ -8,7 +9,6 @@ from db.db import get_db
 from lib.auth import get_current_user
 from lib.subscription import require_active_subscription
 from schema.stats import StatsResponse
-from schema.task import TaskStatusEnum
 
 router = APIRouter()
 
@@ -24,19 +24,44 @@ def get_overall_stats(
         Projects.isDelete == False
     ).count()
 
-    # Calculate Tasks Count
-    # Joining with Projects to ensure we only count tasks for projects owned by the user
-    base_task_query = db.query(Tasks).join(Projects).filter(
-        Projects.owner_user_id == current_user.user_id,
-        Projects.isDelete == False,
-        Tasks.isDelete == False
+    # Base task query: tasks belonging to projects owned by the current user
+    base_task_query = (
+        db.query(Tasks)
+        .join(Projects, Tasks.project_id == Projects.project_id)
+        .filter(
+            Projects.owner_user_id == current_user.user_id,
+            Projects.isDelete == False,
+            Tasks.isDelete == False,
+        )
     )
 
     tasks_count = base_task_query.count()
-    
-    tasks_completed_count = base_task_query.filter(Tasks.status == TaskStatusEnum.DONE.value).count()
-    tasks_pending_count = base_task_query.filter(Tasks.status == TaskStatusEnum.PENDING.value).count()
-    tasks_in_progress_count = base_task_query.filter(Tasks.status == TaskStatusEnum.IN_PROGRESS.value).count()
+
+    # Resolve status IDs by name for this user's projects
+    done_ids = db.query(ProjectStatus.status_id).join(
+        Projects, ProjectStatus.project_id == Projects.project_id
+    ).filter(
+        Projects.owner_user_id == current_user.user_id,
+        func.lower(ProjectStatus.name) == "done",
+    ).subquery()
+
+    todo_ids = db.query(ProjectStatus.status_id).join(
+        Projects, ProjectStatus.project_id == Projects.project_id
+    ).filter(
+        Projects.owner_user_id == current_user.user_id,
+        func.lower(ProjectStatus.name) == "todo",
+    ).subquery()
+
+    in_progress_ids = db.query(ProjectStatus.status_id).join(
+        Projects, ProjectStatus.project_id == Projects.project_id
+    ).filter(
+        Projects.owner_user_id == current_user.user_id,
+        func.lower(ProjectStatus.name) == "in progress",
+    ).subquery()
+
+    tasks_completed_count = base_task_query.filter(Tasks.status_id.in_(done_ids)).count()
+    tasks_pending_count = base_task_query.filter(Tasks.status_id.in_(todo_ids)).count()
+    tasks_in_progress_count = base_task_query.filter(Tasks.status_id.in_(in_progress_ids)).count()
 
     # Get plan limits from subscription
     plan = db.query(Plans).filter(

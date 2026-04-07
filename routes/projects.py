@@ -1,18 +1,33 @@
 from fastapi import HTTPException, Depends, APIRouter, Path, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from db.db import get_db
 from lib.auth import get_current_user
-from models.plan import Projects, Plans, Tasks
-from models.organization import Organization, OrganizationMember
-from schema.project import ProjectResponse, CreateProject, PatchProject, ProjectCreateResponse
-from pydantic import UUID4
 from lib.subscription import require_active_subscription
+from models.plan import Plans
+from models.Project import Projects, ProjectStatus
+from models.Task import Tasks
+from models.organization import Organization, OrganizationMember
+from schema.project import (
+    ProjectResponse,
+    CreateProject,
+    PatchProject,
+    ProjectCreateResponse,
+    ProjectStatusResponse,
+    CreateProjectStatus,
+    PatchProjectStatus,
+)
+from pydantic import UUID4
 from typing import List, Optional
-from sqlalchemy import func
-from schema.task import TaskStatusEnum
 
 
 router = APIRouter()
+
+DEFAULT_STATUSES = [
+    {"name": "Todo", "description": "Task is not yet started"},
+    {"name": "In Progress", "description": "Task is actively being worked on"},
+    {"name": "Done", "description": "Task has been completed"},
+]
 
 
 def ensure_org_owner_or_admin(db: Session, organization: Organization, user_id: UUID4):
@@ -35,6 +50,25 @@ def ensure_org_owner_or_admin(db: Session, organization: Organization, user_id: 
         )
 
 
+def _seed_default_statuses(db: Session, project_id):
+    for s in DEFAULT_STATUSES:
+        db.add(ProjectStatus(project_id=project_id, name=s["name"], description=s["description"]))
+
+
+def _get_project_or_404(db: Session, project_id):
+    project = db.query(Projects).filter(
+        Projects.project_id == project_id,
+        Projects.isDelete == False,
+    ).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return project
+
+
+# ---------------------------------------------------------------------------
+# Project CRUD
+# ---------------------------------------------------------------------------
+
 @router.post("/", response_model=ProjectCreateResponse)
 def create_project(
     payload: CreateProject,
@@ -42,28 +76,20 @@ def create_project(
     current_user=Depends(get_current_user),
     subscription=Depends(require_active_subscription),
 ):
-
-    # Check active subscription
     user_plan = db.query(Plans).filter(Plans.plan_id == subscription.plan_id).first()
-
     if not user_plan:
-        raise HTTPException(
-            status_code=404, detail="no plan exist for this subscription"
-        )
+        raise HTTPException(status_code=404, detail="No plan exists for this subscription")
 
     total_projects = (
         db.query(Projects).filter(
             Projects.owner_user_id == current_user.user_id,
             Projects.organization_id.is_(None),
-            Projects.isDelete == False
+            Projects.isDelete == False,
         ).count()
     )
 
-    # check total projects < max project allowed in plan
-    if total_projects >= user_plan.max_projects:
-        raise HTTPException(
-            status_code=403, detail="Project limit reached for your current plan"
-        )
+    if user_plan.max_projects >= 0 and total_projects >= user_plan.max_projects:
+        raise HTTPException(status_code=403, detail="Project limit reached for your current plan")
 
     new_project = Projects(
         owner_user_id=current_user.user_id,
@@ -72,10 +98,11 @@ def create_project(
         description=payload.description,
     )
     db.add(new_project)
+    db.flush()
 
+    _seed_default_statuses(db, new_project.project_id)
     db.commit()
     db.refresh(new_project)
-
     return new_project
 
 
@@ -87,25 +114,17 @@ def create_project_organization(
     current_user=Depends(get_current_user),
     subscription=Depends(require_active_subscription),
 ):
-    # Fetch organization and verify current user is the owner
     organization = db.query(Organization).filter(
         Organization.organization_id == organization_id
     ).first()
-
     if not organization:
-        raise HTTPException(
-            status_code=404, detail="Organization not found"
-        )
+        raise HTTPException(status_code=404, detail="Organization not found")
 
     ensure_org_owner_or_admin(db, organization, current_user.user_id)
 
-    # Check active subscription
     user_plan = db.query(Plans).filter(Plans.plan_id == subscription.plan_id).first()
-
     if not user_plan:
-        raise HTTPException(
-            status_code=404, detail="no plan exist for this subscription"
-        )
+        raise HTTPException(status_code=404, detail="No plan exists for this subscription")
 
     total_projects = (
         db.query(Projects).filter(
@@ -113,11 +132,8 @@ def create_project_organization(
         ).count()
     )
 
-    # check total projects < max project allowed in plan
-    if total_projects >= user_plan.max_projects:
-        raise HTTPException(
-            status_code=403, detail="Project limit reached for your current plan"
-        )
+    if user_plan.max_projects >= 0 and total_projects >= user_plan.max_projects:
+        raise HTTPException(status_code=403, detail="Project limit reached for your current plan")
 
     new_project = Projects(
         owner_user_id=organization.owner_id,
@@ -126,33 +142,29 @@ def create_project_organization(
         description=payload.description,
     )
     db.add(new_project)
+    db.flush()
 
+    _seed_default_statuses(db, new_project.project_id)
     db.commit()
     db.refresh(new_project)
-
     return new_project
 
 
-@router.patch("/{project_id}", response_model=ProjectResponse)
+@router.patch("/{project_id}", response_model=ProjectCreateResponse)
 def update_project_details(
     payload: PatchProject,
     project_id: UUID4 = Path(..., description="project_id of the project"),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    user_project = db.query(Projects).filter(Projects.project_id == project_id).first()
-
-    if not user_project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    user_project = _get_project_or_404(db, project_id)
 
     if user_project.organization_id:
         organization = db.query(Organization).filter(
             Organization.organization_id == user_project.organization_id
         ).first()
-
         if not organization:
             raise HTTPException(status_code=404, detail="Organization not found")
-
         ensure_org_owner_or_admin(db, organization, current_user.user_id)
     else:
         if user_project.owner_user_id != current_user.user_id:
@@ -172,25 +184,28 @@ def update_project_details(
 def get_project(
     project_id: Optional[UUID4] = None,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
+    current_user=Depends(get_current_user),
 ):
+    done_status = db.query(ProjectStatus).join(
+        Projects, ProjectStatus.project_id == Projects.project_id
+    ).filter(
+        Projects.owner_user_id == current_user.user_id,
+        func.lower(ProjectStatus.name) == "done",
+    ).subquery()
+
     query = (
         db.query(
             Projects,
             func.count(Tasks.task_id).label("total_tasks"),
             func.count(Tasks.task_id)
-                .filter(Tasks.status == TaskStatusEnum.DONE.value)
-                .label("completed_tasks")
+                .filter(Tasks.status_id == done_status.c.status_id)
+                .label("completed_tasks"),
         )
-        .outerjoin(
-            Tasks,
-            (Tasks.project_id == Projects.project_id) &
-            (Tasks.isDelete == False)
-        )
+        .outerjoin(Tasks, (Tasks.project_id == Projects.project_id) & (Tasks.isDelete == False))
         .filter(
             Projects.owner_user_id == current_user.user_id,
             Projects.organization_id == None,
-            Projects.isDelete == False
+            Projects.isDelete == False,
         )
         .group_by(Projects.project_id)
     )
@@ -203,7 +218,6 @@ def get_project(
     if not results:
         raise HTTPException(status_code=404, detail="No projects found for the user")
 
-    # 🔥 Map response properly
     response = []
     for project, total_tasks, completed_tasks in results:
         response.append(
@@ -216,12 +230,10 @@ def get_project(
                 created_at=project.created_at,
                 updated_at=project.updated_at,
                 total_tasks=total_tasks,
-                completed_tasks=completed_tasks
+                completed_tasks=completed_tasks,
             )
         )
-
     return response
-
 
 
 @router.get("/organization", response_model=List[ProjectResponse])
@@ -229,40 +241,40 @@ def get_project_organization(
     organization_id: UUID4 = Query(..., description="Organization ID to fetch projects for"),
     project_id: Optional[UUID4] = None,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
+    current_user=Depends(get_current_user),
 ):
-    from models.organization import Organization
-
     organization = db.query(Organization).filter(
         Organization.organization_id == organization_id
     ).first()
-
     if not organization:
         raise HTTPException(status_code=404, detail="Organization not found")
 
     organization_member = db.query(OrganizationMember).filter(
         OrganizationMember.organization_id == organization_id,
-        OrganizationMember.user_id == current_user.user_id
+        OrganizationMember.user_id == current_user.user_id,
     ).first()
-    if current_user.user_id != organization.owner_user_id and not organization_member:
+    if current_user.user_id != organization.owner_id and not organization_member:
         raise HTTPException(status_code=403, detail="Not a member of this organization")
+
+    done_status = db.query(ProjectStatus).join(
+        Projects, ProjectStatus.project_id == Projects.project_id
+    ).filter(
+        Projects.organization_id == organization_id,
+        func.lower(ProjectStatus.name) == "done",
+    ).subquery()
 
     query = (
         db.query(
             Projects,
             func.count(Tasks.task_id).label("total_tasks"),
             func.count(Tasks.task_id)
-                .filter(Tasks.status == TaskStatusEnum.DONE.value)
-                .label("completed_tasks")
+                .filter(Tasks.status_id == done_status.c.status_id)
+                .label("completed_tasks"),
         )
-        .outerjoin(
-            Tasks,
-            (Tasks.project_id == Projects.project_id) &
-            (Tasks.isDelete == False)
-        )
+        .outerjoin(Tasks, (Tasks.project_id == Projects.project_id) & (Tasks.isDelete == False))
         .filter(
             Projects.organization_id == organization_id,
-            Projects.isDelete == False
+            Projects.isDelete == False,
         )
         .group_by(Projects.project_id)
     )
@@ -271,7 +283,6 @@ def get_project_organization(
         query = query.filter(Projects.project_id == project_id)
 
     results = query.all()
-
     if not results:
         raise HTTPException(status_code=404, detail="No projects found for the organization")
 
@@ -287,12 +298,10 @@ def get_project_organization(
                 created_at=project.created_at,
                 updated_at=project.updated_at,
                 total_tasks=total_tasks,
-                completed_tasks=completed_tasks
+                completed_tasks=completed_tasks,
             )
         )
-
     return response
-
 
 
 @router.delete("/{project_id}", status_code=204)
@@ -301,27 +310,125 @@ def delete_project(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    user_project = db.query(Projects).filter(
-        Projects.project_id == project_id,
-        Projects.isDelete == False
-    ).first()
-
-    if not user_project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    user_project = _get_project_or_404(db, project_id)
 
     if user_project.organization_id:
         organization = db.query(Organization).filter(
             Organization.organization_id == user_project.organization_id
         ).first()
-
         if not organization:
             raise HTTPException(status_code=404, detail="Organization not found")
-
         ensure_org_owner_or_admin(db, organization, current_user.user_id)
     else:
         if user_project.owner_user_id != current_user.user_id:
             raise HTTPException(status_code=403, detail="Not authorized to delete this project")
 
     user_project.isDelete = True
+    db.commit()
+    return
+
+
+# ---------------------------------------------------------------------------
+# Project Status endpoints
+# ---------------------------------------------------------------------------
+
+@router.get("/{project_id}/statuses", response_model=List[ProjectStatusResponse])
+def get_project_statuses(
+    project_id: UUID4 = Path(...),
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    _get_project_or_404(db, project_id)
+
+    statuses = db.query(ProjectStatus).filter(
+        ProjectStatus.project_id == project_id
+    ).order_by(ProjectStatus.created_at).all()
+
+    return statuses
+
+
+@router.post("/{project_id}/statuses", response_model=ProjectStatusResponse)
+def create_project_status(
+    payload: CreateProjectStatus,
+    project_id: UUID4 = Path(...),
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    project = _get_project_or_404(db, project_id)
+
+    if project.owner_user_id != current_user.user_id:
+        raise HTTPException(status_code=403, detail="Not authorized to manage statuses for this project")
+
+    new_status = ProjectStatus(
+        project_id=project_id,
+        name=payload.name,
+        description=payload.description,
+    )
+    db.add(new_status)
+    db.commit()
+    db.refresh(new_status)
+    return new_status
+
+
+@router.patch("/{project_id}/statuses/{status_id}", response_model=ProjectStatusResponse)
+def update_project_status(
+    payload: PatchProjectStatus,
+    project_id: UUID4 = Path(...),
+    status_id: UUID4 = Path(...),
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    project = _get_project_or_404(db, project_id)
+
+    if project.owner_user_id != current_user.user_id:
+        raise HTTPException(status_code=403, detail="Not authorized to manage statuses for this project")
+
+    status = db.query(ProjectStatus).filter(
+        ProjectStatus.status_id == status_id,
+        ProjectStatus.project_id == project_id,
+    ).first()
+    if not status:
+        raise HTTPException(status_code=404, detail="Status not found")
+
+    if payload.name is not None:
+        status.name = payload.name
+    if payload.description is not None:
+        status.description = payload.description
+
+    db.commit()
+    db.refresh(status)
+    return status
+
+
+@router.delete("/{project_id}/statuses/{status_id}", status_code=204)
+def delete_project_status(
+    project_id: UUID4 = Path(...),
+    status_id: UUID4 = Path(...),
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    project = _get_project_or_404(db, project_id)
+
+    if project.owner_user_id != current_user.user_id:
+        raise HTTPException(status_code=403, detail="Not authorized to manage statuses for this project")
+
+    status = db.query(ProjectStatus).filter(
+        ProjectStatus.status_id == status_id,
+        ProjectStatus.project_id == project_id,
+    ).first()
+    if not status:
+        raise HTTPException(status_code=404, detail="Status not found")
+
+    tasks_using = db.query(Tasks).filter(
+        Tasks.status_id == status_id,
+        Tasks.isDelete == False,
+    ).count()
+    if tasks_using > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot delete status: {tasks_using} task(s) are currently using it",
+        )
+
+    db.delete(status)
     db.commit()
     return

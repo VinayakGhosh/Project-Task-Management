@@ -1,8 +1,6 @@
 import uuid
 from db.db import Base
-from sqlalchemy import Column, TIMESTAMP, String, UUID, Integer, Boolean, text, ForeignKey
-from sqlalchemy.orm import relationship
-from schema.task import TaskStatusEnum
+from sqlalchemy import Column, TIMESTAMP, String, UUID, Integer, Boolean, text
 
 class Plans(Base):
     __tablename__ = "plans"
@@ -16,28 +14,5 @@ class Plans(Base):
     export_allowed = Column(Boolean, nullable=False)
     is_discontinued = Column(Boolean, nullable=False, server_default=text("false"), default=False)
     is_deleted = Column(Boolean, nullable=False, server_default=text("false"), default=False)
-    created_at = Column(TIMESTAMP(timezone=True), server_default=text('now()'))
-    updated_at = Column(TIMESTAMP(timezone=True), onupdate=text('now()'), server_default=text('now()'))
-
-
-class Projects(Base):
-    __tablename__ = "projects"
-    project_id = Column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4)
-    owner_user_id = Column(UUID, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=True)
-    organization_id = Column(UUID, ForeignKey("organizations.organization_id", ondelete="CASCADE"), nullable=True)
-    name = Column(String, nullable=False)
-    description = Column(String, nullable=True, default="No description")
-    isDelete = Column(Boolean, nullable=False, server_default=text("false"), default=False)
-    created_at = Column(TIMESTAMP(timezone=True), server_default=text('now()'))
-    updated_at = Column(TIMESTAMP(timezone=True), onupdate=text('now()'), server_default=text('now()'))
-
-class Tasks(Base):
-    __tablename__ = "tasks"
-    task_id = Column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4)
-    project_id = Column(UUID, ForeignKey("projects.project_id", ondelete="CASCADE"), nullable=False)
-    name = Column(String, nullable=False)
-    description = Column(String, nullable=True, default="No description") 
-    status = Column(String, nullable=False, default=TaskStatusEnum.PENDING.value)
-    isDelete = Column(Boolean, nullable=False, server_default=text("false"), default=False)
     created_at = Column(TIMESTAMP(timezone=True), server_default=text('now()'))
     updated_at = Column(TIMESTAMP(timezone=True), onupdate=text('now()'), server_default=text('now()'))

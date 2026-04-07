@@ -1,12 +1,14 @@
-from fastapi import HTTPException, Depends, APIRouter, Query
-from sqlalchemy.orm import Session
-from models.plan import Tasks, Plans, Projects
-from models.user import Usage
-from lib.subscription import require_active_subscription
-from lib.auth import get_current_user
-from schema.task import TaskCreateSchema, TaskResponseSchema, PatchTask, TaskStatusEnum
-from schema.stats import FeatureNameEnum
+from fastapi import HTTPException, Depends, APIRouter, Query, Path
+from sqlalchemy.orm import Session, aliased
 from db.db import get_db
+from lib.auth import get_current_user
+from lib.subscription import require_active_subscription
+from models.plan import Plans
+from models.Project import Projects, ProjectStatus
+from models.Task import Tasks
+from models.user import Users, Usage
+from schema.task import TaskCreateSchema, TaskResponseSchema, PatchTask, PatchTaskStatus
+from schema.stats import FeatureNameEnum
 from datetime import datetime, timezone
 from typing import Optional, List
 from uuid import UUID
@@ -14,145 +16,192 @@ from uuid import UUID
 router = APIRouter()
 
 
+def _get_task_with_ownership(db: Session, task_id, user_id):
+    task = (
+        db.query(Tasks)
+        .join(Projects, Tasks.project_id == Projects.project_id)
+        .filter(
+            Tasks.task_id == task_id,
+            Tasks.isDelete == False,
+            Projects.owner_user_id == user_id,
+            Projects.isDelete == False,
+        )
+        .first()
+    )
+    return task
+
+
+def _build_task_response(task: Tasks, db: Session) -> dict:
+    status_name = None
+    if task.status_id:
+        status_row = db.query(ProjectStatus).filter(
+            ProjectStatus.status_id == task.status_id
+        ).first()
+        status_name = status_row.name if status_row else None
+
+    return TaskResponseSchema(
+        task_id=task.task_id,
+        project_id=task.project_id,
+        status_id=task.status_id,
+        status_name=status_name,
+        created_by=task.created_by,
+        assigned_to=task.assigned_to,
+        name=task.name,
+        description=task.description,
+        created_at=task.created_at,
+        updated_at=task.updated_at,
+    )
+
+
 @router.post("/", response_model=TaskResponseSchema)
 def create_task(
     payload: TaskCreateSchema,
     db: Session = Depends(get_db),
-    subscription = Depends(require_active_subscription),
-    current_user = Depends(get_current_user)
+    subscription=Depends(require_active_subscription),
+    current_user=Depends(get_current_user),
 ):
-    
     project = db.query(Projects).filter(
-        Projects.id == payload.project_id,
-        Projects.user_id == current_user.user_id
-        ).first()
+        Projects.project_id == payload.project_id,
+        Projects.owner_user_id == current_user.user_id,
+        Projects.isDelete == False,
+    ).first()
 
     if not project:
         raise HTTPException(status_code=403, detail="Invalid project")
 
-    # fetch user's current plan
-    user_plan = db.query(Plans).filter(Plans.plan_id==subscription.plan_id).first()
-    
-    if not user_plan:
-        raise HTTPException(status_code=404, detail="no plans found for this subscription")
-    
-    #  task_per_day limit
-    task_per_day = user_plan.task_per_day
+    if payload.assigned_to is not None:
+        assigned_user = db.query(Users).filter(Users.user_id == payload.assigned_to).first()
+        if not assigned_user:
+            raise HTTPException(status_code=404, detail="Assigned user not found")
 
-    # Find out user's todays usage
+    user_plan = db.query(Plans).filter(Plans.plan_id == subscription.plan_id).first()
+    if not user_plan:
+        raise HTTPException(status_code=404, detail="No plan found for this subscription")
+
+    task_per_day = user_plan.task_per_day
     today = datetime.now(timezone.utc).date()
 
-
     usage_today = db.query(Usage).filter(
-        Usage.date==today,
-        Usage.feature_name==FeatureNameEnum.TASK.value,
-        Usage.user_id == current_user.user_id
-        ).first()
+        Usage.date == today,
+        Usage.feature_name == FeatureNameEnum.TASK.value,
+        Usage.user_id == current_user.user_id,
+    ).first()
+
     if usage_today:
-        # check if the usage is greater than equal to allowed usage in plan
-        if usage_today.feature_count >=task_per_day:
-            raise HTTPException(status_code=403, detail="Task limit exceeded")
-        else:
-            usage_today.feature_count +=1
+        if task_per_day >= 0 and usage_today.feature_count >= task_per_day:
+            raise HTTPException(status_code=403, detail="Task limit exceeded for today")
+        usage_today.feature_count += 1
     else:
-        new_usage = Usage(
+        db.add(Usage(
             user_id=current_user.user_id,
             feature_name=FeatureNameEnum.TASK.value,
             feature_count=1,
             date=today,
-        )
-        db.add(new_usage)
-    
-    #create the task
+        ))
+
+    todo_status = db.query(ProjectStatus).filter(
+        ProjectStatus.project_id == payload.project_id,
+        ProjectStatus.name.ilike("todo"),
+    ).first()
+
     new_task = Tasks(
         project_id=payload.project_id,
-        user_id = current_user.user_id,
-        name = payload.name,
-        description=payload.description
+        created_by=current_user.user_id,
+        assigned_to=payload.assigned_to,
+        status_id=todo_status.status_id if todo_status else None,
+        name=payload.name,
+        description=payload.description,
     )
     db.add(new_task)
     db.commit()
     db.refresh(new_task)
-    return new_task
-
+    return _build_task_response(new_task, db)
 
 
 @router.patch("/{task_id}", response_model=TaskResponseSchema)
 def update_task(
-    task_id: str,
+    task_id: UUID,
     payload: PatchTask,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    # 1️⃣ Fetch task and enforce ownership
-    task = db.query(Tasks).filter(
-        Tasks.task_id == task_id,
-        Tasks.user_id == current_user.user_id
-    ).first()
-
+    task = _get_task_with_ownership(db, task_id, current_user.user_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    # 2️⃣ Apply partial updates safely
     if payload.name is not None:
         task.name = payload.name
-
     if payload.description is not None:
         task.description = payload.description
 
-    if payload.status is not None:
-        task.status = payload.status
-
-    # 3️⃣ Persist changes
     db.commit()
     db.refresh(task)
+    return _build_task_response(task, db)
 
-    return task
+
+@router.patch("/{task_id}/status", response_model=TaskResponseSchema)
+def update_task_status(
+    task_id: UUID,
+    payload: PatchTaskStatus,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    task = _get_task_with_ownership(db, task_id, current_user.user_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    status = db.query(ProjectStatus).filter(
+        ProjectStatus.status_id == payload.status_id,
+        ProjectStatus.project_id == task.project_id,
+    ).first()
+    if not status:
+        raise HTTPException(status_code=404, detail="Status not found or does not belong to this project")
+
+    task.status_id = payload.status_id
+    db.commit()
+    db.refresh(task)
+    return _build_task_response(task, db)
 
 
 @router.get("/", response_model=List[TaskResponseSchema])
 def get_tasks(
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user),
-
+    current_user=Depends(get_current_user),
     task_id: Optional[UUID] = Query(None),
     project_id: Optional[UUID] = Query(None),
-    status: Optional[TaskStatusEnum] = Query(None),
+    status_id: Optional[UUID] = Query(None),
 ):
-    query = db.query(Tasks).filter(
-        Tasks.user_id == current_user.user_id,
-        Tasks.isDelete == False
+    query = (
+        db.query(Tasks)
+        .join(Projects, Tasks.project_id == Projects.project_id)
+        .filter(
+            Projects.owner_user_id == current_user.user_id,
+            Projects.isDelete == False,
+            Tasks.isDelete == False,
+        )
     )
 
-    # Optional filters
     if task_id is not None:
         query = query.filter(Tasks.task_id == task_id)
-
     if project_id is not None:
         query = query.filter(Tasks.project_id == project_id)
-
-    if status is not None:
-        query = query.filter(Tasks.status == status.value)
+    if status_id is not None:
+        query = query.filter(Tasks.status_id == status_id)
 
     tasks = query.order_by(Tasks.created_at.desc()).all()
-    return tasks
+    return [_build_task_response(t, db) for t in tasks]
 
 
 @router.delete("/{task_id}", status_code=204)
 def delete_task(
-    task_id: str,
+    task_id: UUID,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
-    task = db.query(Tasks).filter(
-        Tasks.task_id == task_id,
-        Tasks.user_id == current_user.user_id,
-        Tasks.isDelete == False
-    ).first()
-
+    task = _get_task_with_ownership(db, task_id, current_user.user_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
     task.isDelete = True
     db.commit()
-    return
+    return

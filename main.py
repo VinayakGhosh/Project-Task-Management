@@ -3,6 +3,8 @@ from db.db import get_db
 import logging
 from models.user import Users
 from models.plan import Plans
+from models.Project import Projects, ProjectStatus
+from models.Task import Tasks, TaskComment
 from routes import api_router
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
