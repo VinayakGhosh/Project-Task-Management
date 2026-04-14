@@ -109,6 +109,7 @@ def create_task(
         created_by=current_user.user_id,
         assigned_to=payload.assigned_to,
         status_id=todo_status.status_id if todo_status else None,
+        status_name=todo_status.name if todo_status else None,
         name=payload.name,
         description=payload.description,
     )
@@ -158,6 +159,7 @@ def update_task_status(
         raise HTTPException(status_code=404, detail="Status not found or does not belong to this project")
 
     task.status_id = payload.status_id
+    task.status_name = status.name
     db.commit()
     db.refresh(task)
     return _build_task_response(task, db)

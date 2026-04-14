@@ -8,6 +8,7 @@ class Tasks(Base):
     task_id = Column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4)
     project_id = Column(UUID, ForeignKey("projects.project_id", ondelete="CASCADE"), nullable=False)
     status_id = Column(UUID, ForeignKey("project_statuses.status_id", ondelete="SET NULL"), nullable=True)
+    status_name = Column(String, nullable=True)
     created_by = Column(UUID, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
     assigned_to = Column(UUID, ForeignKey("users.user_id", ondelete="SET NULL"), nullable=True)
     name = Column(String, nullable=False)
