@@ -53,6 +53,8 @@ def _build_task_response(task: Tasks, db: Session) -> dict:
     )
 
 
+##### CRUD Operations #####
+
 @router.post("/", response_model=TaskResponseSchema)
 def create_task(
     payload: TaskCreateSchema,
@@ -113,7 +115,7 @@ def create_task(
         name=payload.name,
         description=payload.description,
     )
-   
+
     db.add(new_task)
     db.flush()
 
@@ -152,6 +154,54 @@ def update_task(
     db.refresh(task)
     return _build_task_response(task, db)
 
+
+
+
+@router.get("/", response_model=List[TaskResponseSchema])
+def get_tasks(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+    task_id: Optional[UUID] = Query(None),
+    project_id: Optional[UUID] = Query(None),
+    status_id: Optional[UUID] = Query(None),
+):
+    query = (
+        db.query(Tasks)
+        .join(Projects, Tasks.project_id == Projects.project_id)
+        .filter(
+            Projects.owner_user_id == current_user.user_id,
+            Projects.isDelete == False,
+            Tasks.isDelete == False,
+        )
+    )
+
+    if task_id is not None:
+        query = query.filter(Tasks.task_id == task_id)
+    if project_id is not None:
+        query = query.filter(Tasks.project_id == project_id)
+    if status_id is not None:
+        query = query.filter(Tasks.status_id == status_id)
+
+    tasks = query.order_by(Tasks.created_at.desc()).all()
+    return [_build_task_response(t, db) for t in tasks]
+
+
+@router.delete("/{task_id}", status_code=204)
+def delete_task(
+    task_id: UUID,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    task = _get_task_with_ownership(db, task_id, current_user.user_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    task.isDelete = True
+    db.commit()
+    return
+
+
+##### Status Operations #####
 
 @router.patch("/{task_id}/status", response_model=TaskResponseSchema)
 def update_task_status(
@@ -216,47 +266,3 @@ def move_task_to_new_status(
         status_id=task.status_id,
         status_name=task.status_name,
     )
-
-
-@router.get("/", response_model=List[TaskResponseSchema])
-def get_tasks(
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-    task_id: Optional[UUID] = Query(None),
-    project_id: Optional[UUID] = Query(None),
-    status_id: Optional[UUID] = Query(None),
-):
-    query = (
-        db.query(Tasks)
-        .join(Projects, Tasks.project_id == Projects.project_id)
-        .filter(
-            Projects.owner_user_id == current_user.user_id,
-            Projects.isDelete == False,
-            Tasks.isDelete == False,
-        )
-    )
-
-    if task_id is not None:
-        query = query.filter(Tasks.task_id == task_id)
-    if project_id is not None:
-        query = query.filter(Tasks.project_id == project_id)
-    if status_id is not None:
-        query = query.filter(Tasks.status_id == status_id)
-
-    tasks = query.order_by(Tasks.created_at.desc()).all()
-    return [_build_task_response(t, db) for t in tasks]
-
-
-@router.delete("/{task_id}", status_code=204)
-def delete_task(
-    task_id: UUID,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-):
-    task = _get_task_with_ownership(db, task_id, current_user.user_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-
-    task.isDelete = True
-    db.commit()
-    return
