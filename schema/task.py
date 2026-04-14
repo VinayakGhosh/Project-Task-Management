@@ -34,3 +34,12 @@ class PatchTask(BaseModel):
 
 class PatchTaskStatus(BaseModel):
     status_id: UUID
+
+
+class MoveTaskStatusResponse(BaseModel):
+    task_id: UUID
+    status_id: Optional[UUID]
+    status_name: Optional[str]
+
+    class Config:
+        from_attributes = True

@@ -7,7 +7,7 @@ from models.plan import Plans
 from models.Project import Projects, ProjectStatus
 from models.Task import Tasks, TaskStatusHistory
 from models.user import Users, Usage
-from schema.task import TaskCreateSchema, TaskResponseSchema, PatchTask, PatchTaskStatus
+from schema.task import TaskCreateSchema, TaskResponseSchema, PatchTask, PatchTaskStatus, MoveTaskStatusResponse
 from schema.stats import FeatureNameEnum
 from datetime import datetime, timezone
 from typing import Optional, List
@@ -176,6 +176,46 @@ def update_task_status(
     db.commit()
     db.refresh(task)
     return _build_task_response(task, db)
+
+
+@router.post("/{task_id}/move", response_model=MoveTaskStatusResponse)
+def move_task_to_new_status(
+    task_id: UUID,
+    payload: PatchTaskStatus,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    task = _get_task_with_ownership(db, task_id, current_user.user_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    new_status = db.query(ProjectStatus).filter(
+        ProjectStatus.status_id == payload.status_id,
+        ProjectStatus.project_id == task.project_id,
+    ).first()
+    if not new_status:
+        raise HTTPException(status_code=404, detail="Status not found or does not belong to this project")
+
+    history = TaskStatusHistory(
+        task_id=task.task_id,
+        old_status_id=task.status_id,
+        old_status_name=task.status_name,
+        new_status_id=new_status.status_id,
+        new_status_name=new_status.name,
+        changed_by=current_user.user_id,
+    )
+    db.add(history)
+
+    task.status_id = new_status.status_id
+    task.status_name = new_status.name
+
+    db.commit()
+    db.refresh(task)
+    return MoveTaskStatusResponse(
+        task_id=task.task_id,
+        status_id=task.status_id,
+        status_name=task.status_name,
+    )
 
 
 @router.get("/", response_model=List[TaskResponseSchema])
