@@ -113,7 +113,20 @@ def create_task(
         name=payload.name,
         description=payload.description,
     )
+   
     db.add(new_task)
+    db.flush()
+
+    new_task_history = TaskStatusHistory(
+        task_id=new_task.task_id,
+        old_status_id=None,
+        old_status_name=None,
+        new_status_id=todo_status.status_id if todo_status else None,
+        new_status_name=todo_status.name if todo_status else None,
+        changed_by=current_user.user_id,
+    )
+    db.add(new_task_history)
+
     db.commit()
     db.refresh(new_task)
     return _build_task_response(new_task, db)
