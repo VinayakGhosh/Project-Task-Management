@@ -6,7 +6,7 @@ from lib.auth import get_current_user
 from lib.subscription import require_active_subscription
 from models.plan import Plans
 from models.Project import Projects, ProjectStatus
-from models.Task import Tasks
+from models.Task import Tasks, TaskStatusHistory
 from models.organization import Organization, OrganizationMember
 from schema.project import (
     ProjectResponse,
@@ -390,10 +390,30 @@ def update_project_status(
     if not status:
         raise HTTPException(status_code=404, detail="Status not found")
 
+    old_name = status.name
+
     if payload.name is not None:
         status.name = payload.name
     if payload.description is not None:
         status.description = payload.description
+
+    if payload.name is not None and payload.name != old_name:
+        affected_tasks = db.query(Tasks).filter(
+            Tasks.project_id == project_id,
+            Tasks.status_id == status_id,
+            Tasks.isDelete == False,
+        ).all()
+
+        for task in affected_tasks:
+            db.add(TaskStatusHistory(
+                task_id=task.task_id,
+                old_status_id=status_id,
+                old_status_name=old_name,
+                new_status_id=status_id,
+                new_status_name=payload.name,
+                changed_by=current_user.user_id,
+            ))
+            task.status_name = payload.name
 
     db.commit()
     db.refresh(status)
