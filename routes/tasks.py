@@ -5,7 +5,7 @@ from lib.auth import get_current_user
 from lib.subscription import require_active_subscription
 from models.plan import Plans
 from models.Project import Projects, ProjectStatus
-from models.Task import Tasks
+from models.Task import Tasks, TaskStatusHistory
 from models.user import Users, Usage
 from schema.task import TaskCreateSchema, TaskResponseSchema, PatchTask, PatchTaskStatus
 from schema.stats import FeatureNameEnum
